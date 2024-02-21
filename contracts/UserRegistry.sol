@@ -6,50 +6,96 @@ contract UserRegistry {
         string email;
         uint256 phone;
         uint256 creditValue;
-        string characterType;
-        address userAddress;
+        string[] characterTypes;
+        bytes32 passwordHash;
     }
 
-    mapping(address => User) public users;
+    mapping(uint256 => User) private users;
+    mapping(uint256 => bool) public validUserId;
+    mapping(string => bool) public validCharacterTypes;
 
+    uint256 private nextUserId = 1;
 
-    //注册信息 
-    event UserRegistered(address indexed userAddress, string name, string email, uint256 phone, uint256 creditValue, string characterType);
+    event UserRegistered(uint256 userId, string name, string email, uint256 phone, uint256 creditValue, string[] characterTypes);
+    event UserUnregistered(uint256 userId);
+    event UserUpdated(uint256 userId, string name, string email, uint256 phone, uint256 creditValue, string[] characterTypes);
 
-    function registerUser(string memory name, string memory email, uint256 phone, uint256 creditValue, string memory characterType) public {
+    constructor(string[] memory _validCharacterTypes) {
+        for (uint256 i = 0; i < _validCharacterTypes.length; i++) {
+            validCharacterTypes[_validCharacterTypes[i]] = true;
+        }
+    }
+
+    function registerUser(string memory name, string memory email, uint256 phone, uint256 creditValue, string[] memory characterTypes, bytes32 passwordHash) public {
         require(bytes(name).length > 0, "Name is required");
-        require(users[msg.sender].userAddress == address(0), "User already exists");
+        require(bytes(email).length > 0, "Email is required");
+        require(phone > 0, "Phone number is required");
+        require(creditValue > 0, "Credit value is required");
+        require(characterTypes.length > 0, "At least one character type is required");
+        require(validateCharacterTypes(characterTypes), "Invalid character types");
 
-        users[msg.sender] = User(name, email, phone, creditValue, characterType, msg.sender);
+        users[nextUserId] = User(name, email, phone, creditValue, characterTypes, passwordHash);
 
+        emit UserRegistered(nextUserId, name, email, phone, creditValue, characterTypes);
 
-        emit UserRegistered(msg.sender, name, email, phone, creditValue, characterType);
+        validUserId[nextUserId] = true;
+        nextUserId++;
     }
 
-    //删除用户
-    event UserUnregistered(address indexed userAddress);
+    function unregisterUser(uint256 userId, bytes32 passwordHash) public {
+        require(validUserId[userId], "User does not exist");
+        require(validatePassword(userId, passwordHash), "Invalid password");
 
-    function unregisterUser() public {
-        require(users[msg.sender].userAddress == msg.sender, "User does not exist");
+        delete users[userId];
+        validUserId[userId] = false;
 
-        delete users[msg.sender];
-
-        emit UserUnregistered(msg.sender);
+        emit UserUnregistered(userId);
     }
 
-    //更改用户信息
-    event UserUpdated(address indexed userAddress, string name, string email, uint256 phone, uint256 creditValue, string characterType);
+    function updateUser(uint256 userId, bytes32 passwordHash, string memory name, string memory email, uint256 phone, uint256 creditValue, string[] memory characterTypes) public {
+        require(validUserId[userId], "User does not exist");
+        require(validatePassword(userId, passwordHash), "Invalid password");
+        require(validateCharacterTypes(characterTypes), "Invalid character types");
 
-    function updateUser(address userAddress, string memory name, string memory email, uint256 phone, uint256 creditValue, string memory characterType) public {
-        require(msg.sender == userAddress, "You are not authorized to update this user");
+        User storage user = users[userId];
+        if (bytes(name).length > 0) {
+            user.name = name;
+        }
+        if (bytes(email).length > 0) {
+            user.email = email;
+        }
+        if (phone > 0) {
+            user.phone = phone;
+        }
+        if (creditValue > 0) {
+            user.creditValue = creditValue;
+        }
+        if (characterTypes.length > 0) {
+            user.characterTypes = characterTypes;
+        }
 
-        User storage user = users[userAddress];
-        user.name = name;
-        user.email = email;
-        user.phone = phone;
-        user.creditValue = creditValue;
-        user.characterType = characterType; 
-        emit UserUpdated(userAddress, name, email, phone, creditValue, characterType);
+        emit UserUpdated(userId, user.name, user.email, user.phone, user.creditValue, user.characterTypes);
     }
 
+    function validatePassword(uint256 userId, bytes32 passwordHash) private view returns (bool) {
+        return users[userId].passwordHash == passwordHash;
+    }
+
+    function validateCharacterTypes(string[] memory characterTypes) private view returns (bool) {
+        for (uint256 i = 0; i < characterTypes.length; i++) {
+            if (!validCharacterTypes[characterTypes[i]]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function getUser(uint256 userId, bytes32 passwordHash) public view returns (User memory) {
+        require(validUserId[userId], "User does not exist");
+        require(validatePassword(userId, passwordHash), "Invalid password");
+
+        User memory user = users[userId];
+        delete user.passwordHash;
+        return user;
+    }
 }
