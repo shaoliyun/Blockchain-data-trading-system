@@ -21,7 +21,7 @@ contract QualificationInformation{
     mapping(uint256 => QualificationStorage) public qualificationStorages;
 
     //function6：更新监管信息**********************************************
-    event QualificationUpdated(uint256 indexed codeName, string updateType, bool reported);
+    event QualificationUpdated(uint256 indexed codeName, string updateType, bool reported, address updater);
 
     function qualificationUpdate(uint256 codeName, string memory updateType, bool reported) public{
         require(bytes(updateType).length > 0, "Update type cannot be empty");
@@ -44,15 +44,15 @@ contract QualificationInformation{
             revert("Invalid update type");
         }
 
-        emit QualificationUpdated(codeName, updateType, reported);
+        emit QualificationUpdated(codeName, updateType, reported, msg.sender);
     }
 
-    event qualificationDeleted(uint256 codeName);
+    event qualificationDeleted(uint256 codeName, address deleter);
 
     function deleteQualificationInfo(uint256 codeName) public{
         require(qualificationStorages[codeName].codeName == codeName, "codeName does not exist");
         delete qualificationStorages[codeName];
 
-        emit qualificationDeleted(codeName);
+        emit qualificationDeleted(codeName, msg.sender);
     }
 }
