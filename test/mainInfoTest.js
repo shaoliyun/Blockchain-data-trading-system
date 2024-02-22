@@ -246,9 +246,3 @@ describe("MainInformation contract", function(){
         })
     })
 })
-
-    
-      
-      
-      
-    
