@@ -1,43 +1,42 @@
-const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
-
+const { expect } = require("chai");
 
 describe("UserRegistry", function(){
-    // let userRegistry;
-    // let owner;
-    // let user1;
-    // let user2;
+    let userRegistry;
+    const abi = new ethers.AbiCoder();
+    let account;
 
-    const validCharacterTypes = ["type1", "type2", "type3"];
-
-
-    async function deployTokenFixture() {
-        // Get the ContractFactory and Signers here.
+    beforeEach(async function () {
+        const validCharacterTypes = ["warrior", "mage", "rogue"];
         const UserRegistry = await ethers.getContractFactory("UserRegistry");
-        const hardhatUserRegistry = await UserRegistry.deploy(validCharacterTypes);
-    
-        // Fixtures can return anything you consider useful for your tests
-        return {UserRegistry, hardhatUserRegistry};
-    }
+        userRegistry = await UserRegistry.deploy(validCharacterTypes);
+        [account] = await ethers.getSigners();
+        //await userRegistry.deployed();
+    });
 
-    describe("registerUser", function(){
-        it("should register a new user", async function(){
+    describe("registerUser", function () {
+        it("registers a new user", async function(){
             const name = "Alice";
             const email = "alice@example.com";
             const phone = 1234567890;
             const creditValue = 100;
-            const characterTypes = ["type1", "type2"];
-            const passwordHash = await ethers.keccak256(ethers.toUtf8Bytes("password"));
+            const characterTypes = ["warrior"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, phone, creditValue, characterTypes]
+                )
+            );
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await userRegistry.registerUser(name, email, phone, creditValue, characterTypes, signature);
 
+            const message2 = ethers.keccak256(abi.encode(
+                ["address"],
+                [account.address]
+            ));
+            const signature2 = await ethers.provider.send("eth_sign", [account.address, message2]);
 
-            const {hardhatUserRegistry} = await loadFixture(deployTokenFixture);
-
-            await expect(hardhatUserRegistry.registerUser(name, email, phone, creditValue, characterTypes, passwordHash))
-                .to.emit(hardhatUserRegistry, "UserRegistered")
-                .withArgs(1, name, email, phone, creditValue, characterTypes);
-            
-            const user = await hardhatUserRegistry.getUser(1, passwordHash);
+            const user = await userRegistry.getUser(account.address, signature2, false);
             expect(user.name).to.equal(name);
             expect(user.email).to.equal(email);
             expect(user.phone).to.equal(phone);
@@ -45,147 +44,235 @@ describe("UserRegistry", function(){
             expect(user.characterTypes).to.deep.equal(characterTypes);
         });
 
-        it("should not register a new user with invalid character types", async function(){
-            const name = "Bob";
-            const email = "bob@example.com";
-            const phone = 2345678901;
-            const creditValue = 200;
-            const characterTypes = ["type1", "invalid"];
-            const passwordHash = await ethers.keccak256(ethers.toUtf8Bytes("password"));
-
-            const {hardhatUserRegistry} = await loadFixture(deployTokenFixture);
-
-            await expect(hardhatUserRegistry.registerUser(name, email, phone, creditValue, characterTypes, passwordHash))
-                .to.be.revertedWith("Invalid character types");
+        it("reverts if name is empty", async function(){
+            const email = "alice@example.com";
+            const phone = 1234567890;
+            const creditValue = 100;
+            const characterTypes = ["warrior"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                [account.address, "", email, phone, creditValue, characterTypes]
+                )
+            );
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await expect(
+                userRegistry.registerUser("", email, phone, creditValue, characterTypes, signature)
+            ).to.be.revertedWith("Name is required");
         });
 
-        it("should not register a new user with missing information", async function(){
-            const name = "";
-            const email = "carol@example.com";
-            const phone = 3456789012;
-            const creditValue = 300;
-            const characterTypes = ["type2"];
-            const passwordHash = await ethers.keccak256(ethers.toUtf8Bytes("password"));
+        it("reverts if email is empty", async function(){
+            const name = "Alice";
+            const phone = 1234567890;
+            const creditValue = 100;
+            const characterTypes = ["warrior"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, "", phone, creditValue, characterTypes]
+                )
+            );
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await expect(
+                userRegistry.registerUser(name, "", phone, creditValue, characterTypes, signature)
+            ).to.be.revertedWith("Email is required");
+        });
 
-            const {hardhatUserRegistry} = await loadFixture(deployTokenFixture);
+        it("reverts if phone is zero", async function(){
+            const name = "Alice";
+            const email = "alice@example.com";
+            const creditValue = 100;
+            const characterTypes = ["warrior"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, 0, creditValue, characterTypes]
+                )
+            );
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await expect(
+                userRegistry.registerUser(name, email, 0, creditValue, characterTypes, signature)
+            ).to.be.revertedWith("Phone number is required");
+        });
 
-            await expect(hardhatUserRegistry.registerUser(name, email, phone, creditValue, characterTypes, passwordHash))
-                .to.be.revertedWith("Name is required");
+        it("reverts if creditValue is zero", async function(){
+            const name = "Alice";
+            const email = "alice@example.com";
+            const phone = 1234567890;
+            const characterTypes = ["warrior"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, phone, 0, characterTypes]
+                ) 
+            );
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await expect(
+                userRegistry.registerUser(name, email, phone, 0, characterTypes, signature)
+            ).to.be.revertedWith("Credit value is required");
+        });
 
-            const name2 = "David";
-            const email2 = "";
-            const phone2 = 4567890123;
-            const creditValue2 = 400;
-            const characterTypes2 = ["type3"];
-            const passwordHash2 = await ethers.keccak256(ethers.toUtf8Bytes("password"));
+        it("reverts if characterTypes is empty", async function(){
+            const name = "Alice";
+            const email = "alice@example.com";
+            const phone = 1234567890;
+            const creditValue = 100;
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, phone, creditValue, []]
+                )  
+            );
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await expect(
+                userRegistry.registerUser(name, email, phone, creditValue, [], signature)
+            ).to.be.revertedWith("At least one character type is required");
+        });
 
-            await expect(hardhatUserRegistry.registerUser(name2, email2, phone2, creditValue2, characterTypes2, passwordHash2))
-                .to.be.revertedWith("Email is required");
+        it("reverts if characterTypes contains invalid types", async function(){
+            const name = "Alice";
+            const email = "alice@example.com";
+            const phone = 1234567890;
+            const creditValue = 100;
+            const characterTypes = ["warrior", "invalid"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, phone, creditValue, characterTypes]
+                )               
+            );
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await expect(
+                userRegistry.registerUser(name, email, phone, creditValue, characterTypes, signature)
+            ).to.be.revertedWith("Invalid character types");
+        });
 
-            const name3 = "Eve";
-            const email3 = "eve@example.com";
-            const phone3 = 5678901234;
-            const creditValue3 = 0;
-            const characterTypes3 = ["type1", "type2", "type3"];
-            const passwordHash3 = await ethers.keccak256(ethers.toUtf8Bytes("password"));
-
-            await expect(hardhatUserRegistry.registerUser(name3, email3, phone3, creditValue3, characterTypes3, passwordHash3))
-                .to.be.revertedWith("Credit value is required");
+        it("reverts if signature is invalid", async function(){
+            const name = "Alice";
+            const email = "alice@example.com";
+            const phone = 1234567890;
+            const creditValue = 100;
+            const characterTypes = ["warrior"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, phone, creditValue, characterTypes]
+                )
+            );
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await expect(
+                userRegistry.registerUser(name, email, phone, creditValue, characterTypes, signature.substring(0, signature.length - 2) + "ff")
+            ).to.be.revertedWith("Invalid signature");
         });
     });
 
     describe("unregisterUser", function(){
-        beforeEach(async function () {
+        it("unregisters an existing user", async function(){
             const name = "Alice";
             const email = "alice@example.com";
             const phone = 1234567890;
             const creditValue = 100;
-            const characterTypes = ["type1", "type2"];
-            const passwordHash = await ethers.keccak256(ethers.toUtf8Bytes("password"));
+            const characterTypes = ["warrior"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, phone, creditValue, characterTypes]
+                )
+            );
 
-            const {hardhatUserRegistry} = await loadFixture(deployTokenFixture);
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
 
-            await hardhatUserRegistry.registerUser(name, email, phone, creditValue, characterTypes, passwordHash);
+            await userRegistry.registerUser(name, email, phone, creditValue, characterTypes, signature);
+
+            console.log(await userRegistry.validUserAddress(account.address));
+
+            const message2 = ethers.keccak256(abi.encode(
+                ["address"],
+                [account.address]
+            ));
+
+            const signature2 = await ethers.provider.send("eth_sign", [account.address, message2]);
+
+            await userRegistry.unregisterUser(signature2);
+
+            console.log(await userRegistry.validUserAddress(account.address));
         });
 
-        it("should unregister an existing user", async function(){
+        it("reverts if user does not exist", async function(){
             const name = "Alice";
             const email = "alice@example.com";
             const phone = 1234567890;
             const creditValue = 100;
-            const characterTypes = ["type1", "type2"];
-            const passwordHash = await ethers.keccak256(ethers.toUtf8Bytes("password"));
+            const characterTypes = ["warrior"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, phone, creditValue, characterTypes]
+                )
+            );
 
-            const {hardhatUserRegistry} = await loadFixture(deployTokenFixture);
-
-            await hardhatUserRegistry.registerUser(name, email, phone, creditValue, characterTypes, passwordHash);
-
-            await expect(hardhatUserRegistry.unregisterUser(1, passwordHash))
-                .to.emit(hardhatUserRegistry, "UserUnregistered")
-                .withArgs(1);
-
-            await expect(hardhatUserRegistry.getUser(1, passwordHash)).to.be.revertedWith("User does not exist");
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await expect(
+                userRegistry.unregisterUser(signature)
+            ).to.be.revertedWith("User does not exist");
         });
 
-        it("should not unregister a non-existing user", async function(){
+        it("reverts if signature is invalid", async function(){
             const name = "Alice";
             const email = "alice@example.com";
             const phone = 1234567890;
             const creditValue = 100;
-            const characterTypes = ["type1", "type2"];
-            const passwordHash = await ethers.keccak256(ethers.toUtf8Bytes("password"));
-
-            const {hardhatUserRegistry} = await loadFixture(deployTokenFixture);
-
-            await hardhatUserRegistry.registerUser(name, email, phone, creditValue, characterTypes, passwordHash);
-
-            await expect(hardhatUserRegistry.unregisterUser(2, passwordHash)).to.be.revertedWith("User does not exist");
-        });
-
-        it("should not unregister an existing user with invalid password", async function(){
-
-            const name = "Alice";
-            const email = "alice@example.com";
-            const phone = 1234567890;
-            const creditValue = 100;
-            const characterTypes = ["type1", "type2"];
-            const passwordHash0 = await ethers.keccak256(ethers.toUtf8Bytes("password"));
-            const passwordHash = await ethers.keccak256(ethers.toUtf8Bytes("invalid"));
-
-            const {hardhatUserRegistry} = await loadFixture(deployTokenFixture);
-
-            await hardhatUserRegistry.registerUser(name, email, phone, creditValue, characterTypes, passwordHash0);
-
-            await expect(hardhatUserRegistry.unregisterUser(1, passwordHash)).to.be.revertedWith("Invalid password");
+            const characterTypes = ["warrior"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, phone, creditValue, characterTypes]
+                )
+            );
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await userRegistry.registerUser(name, email, phone, creditValue, characterTypes, signature);
+            await expect(
+                userRegistry.unregisterUser(signature.substring(0, signature.length - 2) + "ff")
+            ).to.be.revertedWith("Invalid signature");
         });
     });
 
-    describe("updateUser", function(){
-
-        it("should update an existing user", async function(){
+    describe("updateUser", function () {
+        it("updates an existing user", async function(){
             const name = "Alice";
             const email = "alice@example.com";
             const phone = 1234567890;
             const creditValue = 100;
-            const characterTypes = ["type1", "type2"];
-            const passwordHash0 = await ethers.keccak256(ethers.toUtf8Bytes("password"));
-
-            const newName = "Alice Smith";
-            const newEmail = "alice.smith@example.com";
-            const newPhone = 2345678901;
+            const characterTypes = ["warrior"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, phone, creditValue, characterTypes]
+                )
+            );
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await userRegistry.registerUser(name, email, phone, creditValue, characterTypes, signature);
+            const newName = "Bob";
+            const newEmail = "bob@example.com";
+            const newPhone = 9876543210;
             const newCreditValue = 200;
-            const newCharacterTypes = ["type2", "type3"];
-            const passwordHash = await ethers.keccak256(ethers.toUtf8Bytes("password"));
+            const newCharacterTypes = ["mage"];
+            const newMessage = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, newName, newEmail, newPhone, newCreditValue, newCharacterTypes]
+                )
+            );
+            const newSignature = await ethers.provider.send("eth_sign", [account.address, newMessage]);
+            await userRegistry.updateUser(newSignature, newName, newEmail, newPhone, newCreditValue, newCharacterTypes);
 
-            const {hardhatUserRegistry} = await loadFixture(deployTokenFixture);
+            const message2 = ethers.keccak256(abi.encode(
+                ["address"],
+                [account.address]
+            ));
+            const signature2 = await ethers.provider.send("eth_sign", [account.address, message2]);
 
-            await hardhatUserRegistry.registerUser(name, email, phone, creditValue, characterTypes, passwordHash0);
-
-            await expect(hardhatUserRegistry.updateUser(1, passwordHash, newName, newEmail, newPhone, newCreditValue, newCharacterTypes))
-                .to.emit(hardhatUserRegistry, "UserUpdated")
-                .withArgs(1, newName, newEmail, newPhone, newCreditValue, newCharacterTypes);
-
-            const user = await hardhatUserRegistry.getUser(1, passwordHash);
+            const user = await userRegistry.getUser(account.address, signature2, false);
             expect(user.name).to.equal(newName);
             expect(user.email).to.equal(newEmail);
             expect(user.phone).to.equal(newPhone);
@@ -193,50 +280,131 @@ describe("UserRegistry", function(){
             expect(user.characterTypes).to.deep.equal(newCharacterTypes);
         });
 
-        it("should not update a non-existing user", async function(){
+        it("reverts if user does not exist", async function(){
             const name = "Alice";
             const email = "alice@example.com";
             const phone = 1234567890;
             const creditValue = 100;
-            const characterTypes = ["type1", "type2"];
-            const passwordHash = await ethers.keccak256(ethers.toUtf8Bytes("password"));
+            const characterTypes = ["warrior"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, phone, creditValue, characterTypes]
+                )
+            );
 
-            const {hardhatUserRegistry} = await loadFixture(deployTokenFixture);
-            await hardhatUserRegistry.registerUser(name, email, phone, creditValue, characterTypes, passwordHash);
-
-            await expect(hardhatUserRegistry.updateUser(2, passwordHash, "name", "email", 1234567890, 100, ["type1"]))
-                .to.be.revertedWith("User does not exist");
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await expect(
+                userRegistry.updateUser(signature, "Bob", "bob@example.com", 9876543210, 200, ["mage"])
+            ).to.be.revertedWith("User does not exist");
         });
 
-        it("should not update an existing user with invalid password", async function(){
+        it("reverts if characterTypes contains invalid types", async function(){
             const name = "Alice";
             const email = "alice@example.com";
             const phone = 1234567890;
             const creditValue = 100;
-            const characterTypes = ["type1", "type2"];
-            const passwordHash0 = await ethers.keccak256(ethers.toUtf8Bytes("password"));
-            const passwordHash = await ethers.keccak256(ethers.toUtf8Bytes("invalid"));
-
-            const {hardhatUserRegistry} = await loadFixture(deployTokenFixture);
-            await hardhatUserRegistry.registerUser(name, email, phone, creditValue, characterTypes, passwordHash0);
-
-            await expect(hardhatUserRegistry.updateUser(1, passwordHash, "name", "email", 1234567890, 100, ["type1"]))
-                .to.be.revertedWith("Invalid password");
+            const characterTypes = ["warrior"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, phone, creditValue, characterTypes]
+                )
+            );
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await userRegistry.registerUser(name, email, phone, creditValue, characterTypes, signature);
+            const newCharacterTypes = ["warrior", "invalid"];
+            const newMessage = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, phone, creditValue, newCharacterTypes]
+                )               
+            );
+            const newSignature = await ethers.provider.send("eth_sign", [account.address, newMessage]);
+            await expect(
+                userRegistry.updateUser(newSignature, "", "", 0, 0, newCharacterTypes)
+            ).to.be.revertedWith("Invalid character types");
         });
 
-        it("should not update an existing user with invalid character types", async function(){
+        it("reverts if signature is invalid", async function(){
             const name = "Alice";
             const email = "alice@example.com";
             const phone = 1234567890;
             const creditValue = 100;
-            const characterTypes = ["type1", "type2"];
-            const passwordHash = await ethers.keccak256(ethers.toUtf8Bytes("password"));
-
-            const {hardhatUserRegistry} = await loadFixture(deployTokenFixture);
-            await hardhatUserRegistry.registerUser(name, email, phone, creditValue, characterTypes, passwordHash);
-
-            await expect(hardhatUserRegistry.updateUser(1, passwordHash, "", "", 0, 0, ["type1", "invalid"]))
-                .to.be.revertedWith("Invalid character types");
+            const characterTypes = ["warrior"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, phone, creditValue, characterTypes]
+                )
+            );
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await userRegistry.registerUser(name, email, phone, creditValue, characterTypes, signature);
+            const newName = "Bob";
+            const newEmail = "bob@example.com";
+            const newPhone = 9876543210;
+            const newCreditValue = 200;
+            const newCharacterTypes = ["mage"];
+            const newMessage = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, newName, newEmail, newPhone, newCreditValue, newCharacterTypes]
+                )              
+            );
+            //const newSignature = await ethers.provider.send("eth_sign", [account.address, newMessage]);
+            await expect(
+                userRegistry.updateUser(signature.substring(0, signature.length - 2) + "ff", newName, newEmail, newPhone, newCreditValue, newCharacterTypes)
+            ).to.be.revertedWith("Invalid signature");
         });
     });
+
+    describe("getUser", function () {
+        it("returns a user", async function(){
+            const name = "Alice";
+            const email = "alice@example.com";
+            const phone = 1234567890;
+            const creditValue = 100;
+            const characterTypes = ["warrior"];
+            const message = ethers.keccak256(
+                abi.encode(
+                    ["address", "string", "string", "uint256", "uint256", "string[]"],
+                    [account.address, name, email, phone, creditValue, characterTypes]
+                )               
+            );
+            const signature = await ethers.provider.send("eth_sign", [account.address, message]);
+            await userRegistry.registerUser(name, email, phone, creditValue, characterTypes, signature);
+
+            const message2 = ethers.keccak256(abi.encode(
+                ["address"],
+                [account.address]
+            ));
+
+            const signature2 = await ethers.provider.send("eth_sign", [account.address, message2]);
+
+            const user = await userRegistry.getUser(account.address, signature2, false);
+            expect(user.name).to.equal(name);
+            expect(user.email).to.equal(email);
+            expect(BigInt(user.phone)).to.equal(phone);
+            expect(BigInt(user.creditValue)).to.equal(creditValue);
+            expect(user.characterTypes).to.deep.equal(characterTypes);
+
+            const user2 = await userRegistry.getUser(account.address, signature2, true);
+            expect(user2.email).to.equal("");
+            expect(BigInt(user2.phone)).to.equal(BigInt(999999999));
+        });
+
+        it("reverts if user does not exist", async function(){
+            const message2 = ethers.keccak256(abi.encode(
+                ["address"],
+                [account.address]
+            ));
+
+            const signature2 = await ethers.provider.send("eth_sign", [account.address, message2]);            
+            await expect(
+                userRegistry.getUser(account.address, signature2, false)
+            ).to.be.revertedWith("User does not exist");
+        });
+    });
+
+    // Add more test cases for other functions
 });
