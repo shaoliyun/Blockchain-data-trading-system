@@ -62,6 +62,7 @@ contract MainInformation{
     mapping(uint256 => MainInfo)  public mainInfos;
     mapping(uint256 => bool) public mainInfoExists;
     mapping(string => uint256[]) public keywordIndex;
+    mapping(uint256 => address) public dataOwner;
 
     //function1: 将用户上传的数据存储到智能合约中***************************************************************
     event DataUploaded(uint256 indexed codeName, string productName);
@@ -77,7 +78,7 @@ contract MainInformation{
         require(bytes(basicInformationData.dataTheme).length > 0, "Data theme cannot be empty");
 
         //判断是否已经上传过该数据
-        require(!mainInfoExists[dataNumber], "Data already exists");
+        require(!mainInfoExists[dataNumber], "data already exists");
 
         //先把数据存进数据结构里
         OutlineStorage memory outlineStorage1 = OutlineStorage(dataNumber, outlineData);
@@ -87,6 +88,7 @@ contract MainInformation{
         outlineStorages[dataNumber] = outlineStorage1;
         mainInfos[dataNumber] = mainInfo1;
         mainInfoExists[dataNumber] = true;
+        dataOwner[dataNumber] = msg.sender;
 
         //将关键词与codeName关联起来
         for(uint256 i = 0; i < basicInformationData.keyWords.length; i++){
@@ -255,6 +257,7 @@ contract MainInformation{
 
 
     //function4：根据codename返回主要信息页的数据*******************************************************
+    //此函数未能内置popularity增加的功能，需要同时调用popularityAdd(uint256 codeName)函数
 
     function searchMainInfo(uint256 codeName) public view returns (MainInfo memory){
 
@@ -274,6 +277,7 @@ contract MainInformation{
 
     function infoDelete(uint256 codeName) public{
         require(mainInfoExists[codeName], "Main info does not exist"); 
+        require(dataOwner[codeName] == msg.sender, "do not have access");
 
         //删除关键词与codeName的关联
         for(uint256 i = 0; i < mainInfos[codeName].basicInformation.keyWords.length; i++){
@@ -289,6 +293,7 @@ contract MainInformation{
 
         delete outlineStorages[codeName];
         delete mainInfos[codeName];
+        delete dataOwner[codeName];
         mainInfoExists[codeName] = false;
 
         emit InfoDeleted(codeName);
