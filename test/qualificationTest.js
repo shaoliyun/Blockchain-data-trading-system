@@ -4,12 +4,14 @@ const { ethers } = require("hardhat");
 describe("QualificationInformation contract", function(){
     let qualificationInformation, owner, user1, user2;
     const codeName = 12345;
+    let account;
 
     beforeEach(async function(){
         [owner, user1, user2] = await ethers.getSigners();
 
         const QualificationInformation = await ethers.getContractFactory("QualificationInformation");
         qualificationInformation = await QualificationInformation.connect(owner).deploy();
+        [account] = await ethers.getSigners();
 
         await qualificationInformation.connect(owner).qualificationUpdate(codeName, "complianceAassessment", true);
         await qualificationInformation.connect(owner).qualificationUpdate(codeName, "qualityAssurance", false);
@@ -38,7 +40,7 @@ describe("QualificationInformation contract", function(){
         it("should emit QualificationUpdated event", async function(){
             await expect(qualificationInformation.connect(owner).qualificationUpdate(codeName, "complianceAassessment", false))
                 .to.emit(qualificationInformation, "QualificationUpdated")
-                .withArgs(codeName, "complianceAassessment", false);
+                .withArgs(codeName, "complianceAassessment", false, account.address);
         });
 
         it("should revert if updateType is invalid", async function(){
@@ -56,7 +58,7 @@ describe("QualificationInformation contract", function(){
         it("should emit qualificationDeleted event", async function(){
             await expect(qualificationInformation.connect(owner).deleteQualificationInfo(codeName))
                 .to.emit(qualificationInformation, "qualificationDeleted")
-                .withArgs(codeName);
+                .withArgs(codeName, account.address);
         });
 
         it("should revert if codeName does not exist", async function(){
